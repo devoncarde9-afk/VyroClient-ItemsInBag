@@ -1,9 +1,9 @@
 name: Build VyroClient Addon
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
-  workflow_dispatch:
 
 jobs:
   build:
@@ -27,29 +27,44 @@ jobs:
         
     - name: Install Substrate headers
       run: |
-        cd $HOME/theos/vendor/include
-        mkdir -p CydiaSubstrate
-        curl -LO https://raw.githubusercontent.com/theos/headers/master/CydiaSubstrate.h
-        cp CydiaSubstrate.h CydiaSubstrate/CydiaSubstrate.h
+        mkdir -p $HOME/theos/vendor/include/CydiaSubstrate
+        curl -L https://raw.githubusercontent.com/theos/headers/master/CydiaSubstrate.h -o $HOME/theos/vendor/include/CydiaSubstrate/CydiaSubstrate.h
         
-    - name: Compile
+    - name: Compile tweak
       run: |
         export THEOS=$HOME/theos
         
         # Process with logos
         $THEOS/bin/logos.pl VyroClient_ItemsInBag_Addon.x > VyroClient_ItemsInBag_Addon.m
         
-        # Compile to object
+        # Show what we got
+        echo "=== Generated .m file (first 50 lines) ==="
+        head -50 VyroClient_ItemsInBag_Addon.m
+        
+        # Compile with all warnings disabled
         xcrun -sdk iphoneos clang -arch arm64 \
           -isysroot $(xcrun -sdk iphoneos --show-sdk-path) \
           -miphoneos-version-min=14.0 \
           -fobjc-arc \
           -I$THEOS/include \
           -I$THEOS/vendor/include \
+          -Wno-everything \
           -c VyroClient_ItemsInBag_Addon.m \
-          -o VyroClient_ItemsInBag_Addon.o
+          -o VyroClient_ItemsInBag_Addon.o || {
+            echo "=== COMPILATION FAILED ==="
+            echo "Showing errors:"
+            xcrun -sdk iphoneos clang -arch arm64 \
+              -isysroot $(xcrun -sdk iphoneos --show-sdk-path) \
+              -miphoneos-version-min=14.0 \
+              -fobjc-arc \
+              -I$THEOS/include \
+              -I$THEOS/vendor/include \
+              -c VyroClient_ItemsInBag_Addon.m \
+              -o VyroClient_ItemsInBag_Addon.o 2>&1 | head -30
+            exit 1
+          }
         
-        # Link to dylib
+        # Link
         xcrun -sdk iphoneos clang -arch arm64 \
           -isysroot $(xcrun -sdk iphoneos --show-sdk-path) \
           -miphoneos-version-min=14.0 \
@@ -64,35 +79,29 @@ jobs:
         # Sign
         $THEOS/bin/ldid -S VyroClient_ItemsInBag.dylib
         
-        echo "✅ Compilation successful"
+        echo "✅ Build successful!"
         ls -lh VyroClient_ItemsInBag.dylib
         
-    - name: Create deb package
+    - name: Create package
       run: |
-        mkdir -p package/DEBIAN
-        mkdir -p package/Library/MobileSubstrate/DynamicLibraries
-        
+        mkdir -p package/DEBIAN package/Library/MobileSubstrate/DynamicLibraries
         cp VyroClient_ItemsInBag.dylib package/Library/MobileSubstrate/DynamicLibraries/
         cp VyroClient_ItemsInBag_Addon.plist package/Library/MobileSubstrate/DynamicLibraries/VyroClient_ItemsInBag.plist
-        
         cat > package/DEBIAN/control << 'CONTROL'
 Package: com.vyro.itemsinbag
 Name: VyroClient Items in Bag
 Version: 1.0.0
 Architecture: iphoneos-arm64
-Description: Adds Items in Bag Spawner section
-Maintainer: Anonymous
+Description: Items in bag spawner addon
+Maintainer: Me
 Section: Tweaks
 Depends: mobilesubstrate
 CONTROL
-        
-        dpkg-deb -b package VyroClient_ItemsInBag_1.0.0.deb
-        
-        echo "✅ Package created"
-        ls -lh VyroClient_ItemsInBag_1.0.0.deb
+        dpkg-deb -b package VyroClient_ItemsInBag.deb
+        ls -lh VyroClient_ItemsInBag.deb
         
     - name: Upload compiled deb
       uses: actions/upload-artifact@v4
       with:
         name: VyroClient_ItemsInBag_Compiled
-        path: VyroClient_ItemsInBag_1.0.0.deb
+        path: VyroClient_ItemsInBag.deb
