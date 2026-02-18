@@ -1,18 +1,15 @@
-// VyroClient Items in Bag Spawner Addon - FIXED
-// Adds a new section to spawn items inside bags
-
+// VyroClient Items in Bag Spawner Addon - FINAL FIX
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
-#import <substrate.h>
+#import <objc/runtime.h>
 
 @interface ACPanView : UIView
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIView *contentView;
 - (void)setupUI;
-- (void)addItemsInBagSection; // Declare the method
+- (void)addItemsInBagSection;
 @end
 
-// IL2CPP functions
 extern void SpawnItem(void *itemName, int quantity, float x, float y, float z, int colorHue, int colorSat);
 extern void* il2cpp_string_new(const char *str);
 
@@ -70,9 +67,8 @@ static const void *kBagSectionAdded = &kBagSectionAdded;
 - (void)setupUI {
     %orig;
     
-    // Guard against double-injection
     if (objc_getAssociatedObject(self, kBagSectionAdded)) return;
-    objc_setAssociatedObject(self, kBagSectionAdded, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(self, kBagSectionAdded, @YES, OBJC_ASSOCIATION_RETAIN);
     
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
@@ -85,15 +81,11 @@ static const void *kBagSectionAdded = &kBagSectionAdded;
     UIView *contentView = self.contentView;
     UIScrollView *scrollView = self.scrollView;
     
-    if (!contentView || !scrollView) {
-        NSLog(@"[ItemsInBag] ERROR: contentView or scrollView is nil");
-        return;
-    }
+    if (!contentView || !scrollView) return;
     
     CGFloat W = contentView.bounds.size.width;
     if (W <= 0) W = UIScreen.mainScreen.bounds.size.width - 40;
     
-    // Find bottom of existing content
     CGFloat y = 0;
     for (UIView *sub in contentView.subviews) {
         CGFloat maxY = CGRectGetMaxY(sub.frame);
@@ -103,15 +95,13 @@ static const void *kBagSectionAdded = &kBagSectionAdded;
     
     CGFloat pad = 15, bH = 50, gap = 10;
     
-    // Divider
     UIView *div = [[UIView alloc] initWithFrame:CGRectMake(pad, y, W-pad*2, 2)];
     div.backgroundColor = [UIColor colorWithWhite:1 alpha:0.2];
     [contentView addSubview:div];
     y += 12;
     
-    // Header
     UILabel *header = [[UILabel alloc] initWithFrame:CGRectMake(pad, y, W-pad*2, 38)];
-    header.text = @"🎒 ITEMS IN BAG SPAWNER";
+    header.text = @"ð ITEMS IN BAG SPAWNER";
     header.textColor = [UIColor whiteColor];
     header.font = [UIFont boldSystemFontOfSize:16];
     header.textAlignment = NSTextAlignmentCenter;
@@ -121,7 +111,6 @@ static const void *kBagSectionAdded = &kBagSectionAdded;
     [contentView addSubview:header];
     y += 44;
     
-    // Description
     UILabel *desc = [[UILabel alloc] initWithFrame:CGRectMake(pad, y, W-pad*2, 40)];
     desc.text = @"Spawn any item inside a random bag!";
     desc.textColor = [UIColor colorWithWhite:0.85 alpha:1];
@@ -131,11 +120,10 @@ static const void *kBagSectionAdded = &kBagSectionAdded;
     [contentView addSubview:desc];
     y += 46;
     
-    // Spawn Item in Bag button
     UIButton *spawnBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     spawnBtn.frame = CGRectMake(pad, y, W-pad*2, bH);
     spawnBtn.backgroundColor = [UIColor colorWithRed:0.3 green:0.7 blue:0.9 alpha:1];
-    [spawnBtn setTitle:@"🎒 Spawn Item IN Bag" forState:UIControlStateNormal];
+    [spawnBtn setTitle:@"ð Spawn Item IN Bag" forState:UIControlStateNormal];
     [spawnBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     spawnBtn.titleLabel.font = [UIFont boldSystemFontOfSize:15];
     spawnBtn.layer.cornerRadius = 12;
@@ -144,11 +132,10 @@ static const void *kBagSectionAdded = &kBagSectionAdded;
     [contentView addSubview:spawnBtn];
     y += bH + gap;
     
-    // All Bags button
     UIButton *allBagsBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     allBagsBtn.frame = CGRectMake(pad, y, W-pad*2, bH);
     allBagsBtn.backgroundColor = [UIColor colorWithRed:0.9 green:0.4 blue:0.7 alpha:1];
-    [allBagsBtn setTitle:@"🎒 Spawn All Bags (17)" forState:UIControlStateNormal];
+    [allBagsBtn setTitle:@"ð Spawn All Bags (17)" forState:UIControlStateNormal];
     [allBagsBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     allBagsBtn.titleLabel.font = [UIFont boldSystemFontOfSize:15];
     allBagsBtn.layer.cornerRadius = 12;
@@ -157,11 +144,10 @@ static const void *kBagSectionAdded = &kBagSectionAdded;
     [contentView addSubview:allBagsBtn];
     y += bH + gap;
     
-    // Random Bag x5 button
     UIButton *randomBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     randomBtn.frame = CGRectMake(pad, y, W-pad*2, bH);
     randomBtn.backgroundColor = [UIColor colorWithRed:1.0 green:0.6 blue:0.2 alpha:1];
-    [randomBtn setTitle:@"🎲 Random Bag x5" forState:UIControlStateNormal];
+    [randomBtn setTitle:@"ð² Random Bag x5" forState:UIControlStateNormal];
     [randomBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     randomBtn.titleLabel.font = [UIFont boldSystemFontOfSize:15];
     randomBtn.layer.cornerRadius = 12;
@@ -170,20 +156,15 @@ static const void *kBagSectionAdded = &kBagSectionAdded;
     [contentView addSubview:randomBtn];
     y += bH + 20;
     
-    // Update scroll content size
     CGSize currentSize = scrollView.contentSize;
     scrollView.contentSize = CGSizeMake(currentSize.width, MAX(y, currentSize.height));
-    
-    NSLog(@"[ItemsInBag] ✅ Section added successfully at y=%.0f", y);
 }
 
 %new
 - (void)openItemInBagSpawner {
-    NSLog(@"[ItemsInBag] Opening item in bag spawner");
-    
     UIAlertController *alert = [UIAlertController 
-        alertControllerWithTitle:@"🎒 Spawn Item IN Bag" 
-        message:@"Enter the item name to spawn inside a random bag\n\nExample: item_shotgun" 
+        alertControllerWithTitle:@"ð Spawn Item IN Bag" 
+        message:@"Enter item name (e.g., item_shotgun)" 
         preferredStyle:UIAlertControllerStyleAlert];
     
     [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
@@ -200,7 +181,6 @@ static const void *kBagSectionAdded = &kBagSectionAdded;
                 NSString *randomBag = bags[arc4random_uniform((uint32_t)bags.count)];
                 spawn(randomBag, 1);
                 spawnLater(itemName, 1, 0.05);
-                NSLog(@"[ItemsInBag] Spawned %@ in %@", itemName, randomBag);
             }
     }]];
     
@@ -232,7 +212,6 @@ static const void *kBagSectionAdded = &kBagSectionAdded;
     for (NSInteger i = 0; i < bags.count; i++) {
         spawnLater(bags[i], 1, i * 0.08);
     }
-    NSLog(@"[ItemsInBag] Spawning all %lu bags", (unsigned long)bags.count);
 }
 
 %new
@@ -242,12 +221,10 @@ static const void *kBagSectionAdded = &kBagSectionAdded;
         NSString *randomBag = bags[arc4random_uniform((uint32_t)bags.count)];
         spawnLater(randomBag, 1, i * 0.12);
     }
-    NSLog(@"[ItemsInBag] Spawning 5 random bags");
 }
 
 %end
 
 %ctor {
-    NSLog(@"[ItemsInBag] ✅ Items in Bag Spawner addon loaded");
-    NSLog(@"[ItemsInBag] Targeting: com.woostergames.animalcompany");
+    NSLog(@"[ItemsInBag] Items in Bag Spawner loaded");
 }
