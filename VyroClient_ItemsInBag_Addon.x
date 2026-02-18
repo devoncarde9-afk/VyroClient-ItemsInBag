@@ -1,108 +1,32 @@
-name: Build VyroClient Addon
+// VyroClient Items in Bag Spawner Addon - FINAL FIX
+#import <UIKit/UIKit.h>
+#import <Foundation/Foundation.h>
+#import <objc/runtime.h>
 
-on:
-  workflow_dispatch:
-  push:
-    branches: [ main ]
+@interface ACPanView : UIView
+@property (nonatomic, strong) UIScrollView *scrollView;
+@property (nonatomic, strong) UIView *contentView;
+- (void)setupUI;
+- (void)addItemsInBagSection;
+@end
 
-jobs:
-  build:
-    runs-on: macos-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Show files
-      run: |
-        echo "=== Files in repository ==="
-        ls -la
-        echo "=== Looking for .x file ==="
-        find . -name "*.x" -type f
-        
-    - name: Install Theos
-      run: |
-        git clone --recursive https://github.com/theos/theos.git $HOME/theos
-        echo "THEOS=$HOME/theos" >> $GITHUB_ENV
-        
-    - name: Install iOS SDK
-      run: |
-        cd $HOME/theos
-        curl -LO https://github.com/theos/sdks/archive/master.zip
-        unzip master.zip
-        mv sdks-master/iPhoneOS*.sdk sdks/
-        
-    - name: Compile tweak
-      run: |
-        export THEOS=$HOME/theos
-        
-        # Find the .x file automatically
-        XFILE=$(find . -maxdepth 1 -name "*ItemsInBag*.x" -type f | head -n 1)
-        
-        if [ -z "$XFILE" ]; then
-          echo "ERROR: No .x file found!"
-          exit 1
-        fi
-        
-        echo "Found .x file: $XFILE"
-        
-        # Process with logos
-        $THEOS/bin/logos.pl "$XFILE" > VyroClient_ItemsInBag_Addon.m
-        
-        # Compile
-        xcrun -sdk iphoneos clang -arch arm64 \
-          -isysroot $(xcrun -sdk iphoneos --show-sdk-path) \
-          -miphoneos-version-min=14.0 \
-          -fobjc-arc \
-          -I$THEOS/include \
-          -I$THEOS/vendor/include \
-          -Wno-everything \
-          -c VyroClient_ItemsInBag_Addon.m \
-          -o VyroClient_ItemsInBag_Addon.o
-        
-        # Link
-        xcrun -sdk iphoneos clang -arch arm64 \
-          -isysroot $(xcrun -sdk iphoneos --show-sdk-path) \
-          -miphoneos-version-min=14.0 \
-          -dynamiclib \
-          -o VyroClient_ItemsInBag.dylib \
-          VyroClient_ItemsInBag_Addon.o \
-          -framework Foundation \
-          -framework UIKit
-        
-        # Sign
-        $THEOS/bin/ldid -S VyroClient_ItemsInBag.dylib
-        
-        echo "â Build successful!"
-        ls -lh VyroClient_ItemsInBag.dylib
-        
-    - name: Create package
-      run: |
-        mkdir -p package/DEBIAN package/Library/MobileSubstrate/DynamicLibraries
-        cp VyroClient_ItemsInBag.dylib package/Library/MobileSubstrate/DynamicLibraries/
-        
-        # Find plist file
-        PLIST=$(find . -maxdepth 1 -name "*ItemsInBag*.plist" -type f | head -n 1)
-        if [ -n "$PLIST" ]; then
-          cp "$PLIST" package/Library/MobileSubstrate/DynamicLibraries/VyroClient_ItemsInBag.plist
-        fi
-        
-        cat > package/DEBIAN/control << 'CONTROL'
-Package: com.vyro.itemsinbag
-Name: VyroClient Items in Bag
-Version: 1.0.0
-Architecture: iphoneos-arm64
-Description: Items in bag spawner
-Maintainer: Me
-Section: Tweaks
-Depends: mobilesubstrate
-CONTROL
-        
-        dpkg-deb -b package VyroClient_ItemsInBag.deb
-        ls -lh VyroClient_ItemsInBag.deb
-        
-    - name: Upload
-      uses: actions/upload-artifact@v4
-      with:
-        name: VyroClient_ItemsInBag_Compiled
-        path: VyroClient_ItemsInBag.deb
+extern void SpawnItem(void *itemName, int quantity, float x, float y, float z, int colorHue, int colorSat);
+extern void* il2cpp_string_new(const char *str);
+
+static void spawn(NSString *item, int qty) {
+    void *str = il2cpp_string_new([item UTF8String]);
+    SpawnItem(str, qty, 0, 0, 0, 0, 0);
+}
+
+static void spawnLater(NSString *item, int qty, double delay) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ spawn(item, qty); });
+}
+
+static NSArray* allBags(void) {
+    return @[
+        @"item_backpack", @"item_backpack_big", @"item_backpack_black", @"item_backpack_cube",
+        @"item_backpack_gold", @"item_backpack_green", @"item_backpack_large_base",
+        @"item_backpack_large_basketball", @"item_backpack_large_clover", @"item_backpack_mega",
+        @"item_backpack_neon", @"item_backpack_pink", @"item_backpack_realistic",
+        @"item_backpack_skull", @"item_backpack_
