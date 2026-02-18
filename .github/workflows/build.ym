@@ -1,62 +1,12 @@
-name: Build VyroClient Addon
+name: CompileVyroMod
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 jobs:
   build:
     runs-on: macos-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Install Theos
-      run: |
-        git clone --recursive https://github.com/theos/theos.git $HOME/theos
-        echo "THEOS=$HOME/theos" >> $GITHUB_ENV
-        
-    - name: Install iOS SDK
-      run: |
-        cd $HOME/theos
-        curl -LO https://github.com/theos/sdks/archive/master.zip
-        unzip master.zip
-        mv sdks-master/iPhoneOS*.sdk sdks/
-        
-    - name: Install Substrate headers
-      run: |
-        mkdir -p $HOME/theos/vendor/include/CydiaSubstrate
-        curl -L https://raw.githubusercontent.com/theos/headers/master/CydiaSubstrate.h -o $HOME/theos/vendor/include/CydiaSubstrate/CydiaSubstrate.h
-        
-    - name: Compile tweak
-      run: |
-        export THEOS=$HOME/theos
-        $THEOS/bin/logos.pl VyroClient_ItemsInBag_Addon.x > VyroClient_ItemsInBag_Addon.m
-        xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun -sdk iphoneos --show-sdk-path) -miphoneos-version-min=14.0 -fobjc-arc -I$THEOS/include -I$THEOS/vendor/include -Wno-everything -c VyroClient_ItemsInBag_Addon.m -o VyroClient_ItemsInBag_Addon.o
-        xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun -sdk iphoneos --show-sdk-path) -miphoneos-version-min=14.0 -dynamiclib -o VyroClient_ItemsInBag.dylib VyroClient_ItemsInBag_Addon.o -framework Foundation -framework UIKit -L$THEOS/vendor/lib -lsubstrate
-        $THEOS/bin/ldid -S VyroClient_ItemsInBag.dylib
-        
-    - name: Create package
-      run: |
-        mkdir -p package/DEBIAN package/Library/MobileSubstrate/DynamicLibraries
-        cp VyroClient_ItemsInBag.dylib package/Library/MobileSubstrate/DynamicLibraries/
-        cp VyroClient_ItemsInBag_Addon.plist package/Library/MobileSubstrate/DynamicLibraries/VyroClient_ItemsInBag.plist
-        cat > package/DEBIAN/control << 'EOF'
-        Package: com.vyro.itemsinbag
-        Name: VyroClient Items in Bag
-        Version: 1.0.0
-        Architecture: iphoneos-arm64
-        Description: Items in bag spawner
-        Maintainer: Me
-        Section: Tweaks
-        Depends: mobilesubstrate
-        EOF
-        dpkg-deb -b package VyroClient_ItemsInBag.deb
-        
-    - name: Upload
-      uses: actions/upload-artifact@v4
-      with:
-        name: VyroClient_ItemsInBag
-        path: VyroClient_ItemsInBag.deb
+    - uses: actions/checkout@v4
+    - name: Test
+      run: echo "It works"
