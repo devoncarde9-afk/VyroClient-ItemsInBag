@@ -13,6 +13,28 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
+    - name: Show ALL files
+      run: |
+        echo "=== ALL FILES IN REPOSITORY ==="
+        ls -la
+        echo ""
+        echo "=== Files containing 'VyroClient' ==="
+        ls -la | grep -i vyro || echo "No files found with 'vyro' in name"
+        echo ""
+        echo "=== Files ending in .x ==="
+        ls -la *.x 2>/dev/null || echo "No .x files found"
+        echo ""
+        echo "=== Files ending in .plist ==="
+        ls -la *.plist 2>/dev/null || echo "No .plist files found"
+        
+    - name: Try to find the file
+      run: |
+        echo "=== Searching for any .x file ==="
+        find . -name "*.x" -type f
+        echo ""
+        echo "=== Searching for VyroClient files ==="
+        find . -name "*VyroClient*" -type f
+        
     - name: Install Theos
       run: |
         git clone --recursive https://github.com/theos/theos.git $HOME/theos
@@ -26,41 +48,50 @@ jobs:
         unzip master.zip
         mv sdks-master/iPhoneOS*.sdk sdks/
         
-    - name: Setup build environment
+    - name: Compile tweak (will try all possible names)
       run: |
         export THEOS=$HOME/theos
-        export THEOS_DEVICE_IP=localhost
-        export THEOS_DEVICE_PORT=22
         
-    - name: Compile tweak manually
-      run: |
-        export THEOS=$HOME/theos
+        # Find the actual .x file name
+        XFILE=$(find . -maxdepth 1 -name "*.x" -type f | head -n 1)
+        
+        if [ -z "$XFILE" ]; then
+          echo "❌ ERROR: No .x file found in repository!"
+          echo "Please upload VyroClient_ItemsInBag_Addon.x to the root of your repository"
+          exit 1
+        fi
+        
+        echo "✅ Found .x file: $XFILE"
+        
+        # Use the found filename
+        BASENAME=$(basename "$XFILE" .x)
+        echo "Using basename: $BASENAME"
         
         # Process .x file with logos
-        $THEOS/bin/logos.pl VyroClient_ItemsInBag_Addon.x > VyroClient_ItemsInBag_Addon.m
+        $THEOS/bin/logos.pl "$XFILE" > "${BASENAME}.m"
         
-        # Compile to object file
+        # Compile
         xcrun -sdk iphoneos clang -arch arm64 \
           -isysroot $(xcrun -sdk iphoneos --show-sdk-path) \
           -miphoneos-version-min=14.0 \
           -fobjc-arc \
           -I$THEOS/include \
           -I$THEOS/vendor/include \
-          -c VyroClient_ItemsInBag_Addon.m \
-          -o VyroClient_ItemsInBag_Addon.o
+          -c "${BASENAME}.m" \
+          -o "${BASENAME}.o"
         
-        # Link to dylib
+        # Link
         xcrun -sdk iphoneos clang -arch arm64 \
           -isysroot $(xcrun -sdk iphoneos --show-sdk-path) \
           -miphoneos-version-min=14.0 \
           -dynamiclib \
           -o VyroClient_ItemsInBag.dylib \
-          VyroClient_ItemsInBag_Addon.o \
+          "${BASENAME}.o" \
           -framework Foundation \
           -framework UIKit \
           -lsubstrate
         
-        # Sign the dylib
+        # Sign
         ldid -S VyroClient_ItemsInBag.dylib
         
         echo "✅ Compilation complete"
@@ -73,19 +104,26 @@ jobs:
         
         # Copy files
         cp VyroClient_ItemsInBag.dylib package/Library/MobileSubstrate/DynamicLibraries/
-        cp VyroClient_ItemsInBag_Addon.plist package/Library/MobileSubstrate/DynamicLibraries/
         
-        # Create control file
+        # Find plist file
+        PLIST=$(find . -maxdepth 1 -name "*.plist" -type f | head -n 1)
+        if [ -n "$PLIST" ]; then
+          cp "$PLIST" package/Library/MobileSubstrate/DynamicLibraries/VyroClient_ItemsInBag.plist
+        else
+          echo '{ Filter = { Bundles = ( "com.woostergames.animalcompany" ); }; }' > package/Library/MobileSubstrate/DynamicLibraries/VyroClient_ItemsInBag.plist
+        fi
+        
+        # Create control
         cat > package/DEBIAN/control << 'CONTROL'
-        Package: com.vyro.itemsinbag
-        Name: VyroClient Items in Bag
-        Version: 1.0.0
-        Architecture: iphoneos-arm64
-        Description: Adds Items in Bag Spawner to VyroClient
-        Maintainer: Anonymous
-        Section: Tweaks
-        Depends: mobilesubstrate
-        CONTROL
+Package: com.vyro.itemsinbag
+Name: VyroClient Items in Bag
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: Adds Items in Bag Spawner to VyroClient
+Maintainer: Anonymous
+Section: Tweaks
+Depends: mobilesubstrate
+CONTROL
         
         # Build deb
         dpkg-deb -b package VyroClient_ItemsInBag_1.0.0.deb
