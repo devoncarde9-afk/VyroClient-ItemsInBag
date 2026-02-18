@@ -25,20 +25,43 @@ jobs:
         unzip master.zip
         mv sdks-master/iPhoneOS*.sdk sdks/
         
-    - name: List files (debug)
+    - name: Verify files
       run: |
-        echo "=== Files in repository ==="
+        echo "=== Repository contents ==="
         ls -la
-        echo "=== Checking .x file ==="
-        cat VyroClient_ItemsInBag_Addon.x | head -20
+        echo ""
+        echo "=== Makefile check ==="
+        if [ -f Makefile ]; then
+          echo "✅ Makefile found"
+          cat Makefile
+        else
+          echo "❌ Makefile NOT found"
+        fi
+        echo ""
+        echo "=== .x file check ==="
+        if [ -f VyroClient_ItemsInBag_Addon.x ]; then
+          echo "✅ .x file found"
+        else
+          echo "❌ .x file NOT found"
+        fi
         
     - name: Build tweak
       run: |
         export THEOS=$HOME/theos
-        echo "=== Starting build ==="
-        make package FINALPACKAGE=1 || make package
-        echo "=== Build complete ==="
-        ls -la packages/
+        export THEOS_MAKE_PATH=$HOME/theos/makefiles
+        make clean || true
+        make package FINALPACKAGE=1
+        
+    - name: Check build output
+      run: |
+        echo "=== Build output ==="
+        ls -la
+        if [ -d packages ]; then
+          echo "✅ packages directory found"
+          ls -la packages/
+        else
+          echo "❌ packages directory NOT found"
+        fi
         
     - name: Upload compiled deb
       uses: actions/upload-artifact@v4
