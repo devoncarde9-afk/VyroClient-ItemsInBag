@@ -1,0 +1,42 @@
+name: CompileMod
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install Theos
+      run: |
+        git clone --recursive https://github.com/theos/theos.git $HOME/theos
+        echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+    - name: Install SDK
+      run: |
+        cd $HOME/theos
+        curl -LO https://github.com/theos/sdks/archive/master.zip
+        unzip master.zip
+        mv sdks-master/iPhoneOS*.sdk sdks/
+    - name: Stub substrate
+      run: |
+        cat > $HOME/theos/vendor/include/substrate.h << 'EOF'
+        #import <objc/runtime.h>
+        #import <objc/message.h>
+        typedef const void *MSImageRef;
+        MSImageRef MSGetImageByName(const char *file);
+        void *MSFindSymbol(MSImageRef image, const char *name);
+        void MSHookMessageEx(Class _class, SEL message, IMP hook, IMP *old);
+        EOF
+    - name: Build
+      run: |
+        export THEOS=$HOME/theos
+        XFILE=$(find . -name "*ItemsInBag*.x" | head -n 1)
+        $THEOS/bin/logos.pl "$XFILE" > mod.m
+        xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun -sdk iphoneos --show-sdk-path) -miphoneos-version-min=14.0 -fobjc-arc -I$THEOS/include -I$THEOS/vendor/include -Wno-everything -c mod.m -o mod.o
+        xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun -sdk iphoneos --show-sdk-path) -dynamiclib -o VyroClient_ItemsInBag.dylib mod.o -framework Foundation -framework UIKit
+        $THEOS/bin/ldid -S VyroClient_ItemsInBag.dylib
+    - name: Package
+      run: |
+        mkdir -p pkg/DEBIAN pkg/Library/MobileSubstrate/DynamicLibraries
+        cp VyroClient_ItemsInBag.dylib pkg/Library/MobileSubstrate/Dynamic
