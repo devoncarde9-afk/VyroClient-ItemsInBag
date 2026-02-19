@@ -1,230 +1,50 @@
-// VyroClient Items in Bag Spawner Addon - FINAL FIX
-#import <UIKit/UIKit.h>
-#import <Foundation/Foundation.h>
-#import <objc/runtime.h>
+name: Build
 
-@interface ACPanView : UIView
-@property (nonatomic, strong) UIScrollView *scrollView;
-@property (nonatomic, strong) UIView *contentView;
-- (void)setupUI;
-- (void)addItemsInBagSection;
-@end
+on:
+  workflow_dispatch:
 
-extern void SpawnItem(void *itemName, int quantity, float x, float y, float z, int colorHue, int colorSat);
-extern void* il2cpp_string_new(const char *str);
-
-static void spawn(NSString *item, int qty) {
-    void *str = il2cpp_string_new([item UTF8String]);
-    SpawnItem(str, qty, 0, 0, 0, 0, 0);
-}
-
-static void spawnLater(NSString *item, int qty, double delay) {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{ spawn(item, qty); });
-}
-
-static NSArray* allBags(void) {
-    return @[
-        @"item_backpack", @"item_backpack_big", @"item_backpack_black", @"item_backpack_cube",
-        @"item_backpack_gold", @"item_backpack_green", @"item_backpack_large_base",
-        @"item_backpack_large_basketball", @"item_backpack_large_clover", @"item_backpack_mega",
-        @"item_backpack_neon", @"item_backpack_pink", @"item_backpack_realistic",
-        @"item_backpack_skull", @"item_backpack_small_base", @"item_backpack_white",
-        @"item_backpack_with_flashlight"
-    ];
-}
-
-static UIViewController* getRootViewController(void) {
-    UIViewController *rootVC = nil;
-    
-    if (@available(iOS 13.0, *)) {
-        for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
-            if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
-                rootVC = scene.windows.firstObject.rootViewController;
-                if (rootVC) break;
-            }
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    - run: brew install ldid dpkg
+    - run: |
+        git clone --recursive https://github.com/theos/theos.git $HOME/theos
+        cd $HOME/theos
+        curl -LO https://github.com/theos/sdks/archive/master.zip
+        unzip master.zip
+        mv sdks-master/iPhoneOS*.sdk sdks/
+    - run: |
+        cat > $HOME/theos/vendor/include/substrate.h << 'EOF'
+        #import <objc/runtime.h>
+        #import <objc/message.h>
+        void MSHookMessageEx(Class c, SEL m, IMP h, IMP *o);
+        EOF
+        cat > /tmp/s.m << 'EOF'
+        #import <objc/runtime.h>
+        void MSHookMessageEx(Class c, SEL m, IMP h, IMP *o) {
+            Method method = class_getInstanceMethod(c, m);
+            if (o) *o = (IMP)method_getImplementation(method);
+            method_setImplementation(method, h);
         }
-    }
-    
-    if (!rootVC) {
-        #pragma clang diagnostic push
-        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        rootVC = [UIApplication sharedApplication].keyWindow.rootViewController;
-        #pragma clang diagnostic pop
-    }
-    
-    while (rootVC.presentedViewController) {
-        rootVC = rootVC.presentedViewController;
-    }
-    
-    return rootVC;
-}
-
-static const void *kBagSectionAdded = &kBagSectionAdded;
-
-%hook ACPanView
-
-- (void)setupUI {
-    %orig;
-    
-    if (objc_getAssociatedObject(self, kBagSectionAdded)) return;
-    objc_setAssociatedObject(self, kBagSectionAdded, @YES, OBJC_ASSOCIATION_RETAIN);
-    
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        [self addItemsInBagSection];
-    });
-}
-
-%new
-- (void)addItemsInBagSection {
-    UIView *contentView = self.contentView;
-    UIScrollView *scrollView = self.scrollView;
-    
-    if (!contentView || !scrollView) return;
-    
-    CGFloat W = contentView.bounds.size.width;
-    if (W <= 0) W = UIScreen.mainScreen.bounds.size.width - 40;
-    
-    CGFloat y = 0;
-    for (UIView *sub in contentView.subviews) {
-        CGFloat maxY = CGRectGetMaxY(sub.frame);
-        if (maxY > y) y = maxY;
-    }
-    y += 20;
-    
-    CGFloat pad = 15, bH = 50, gap = 10;
-    
-    UIView *div = [[UIView alloc] initWithFrame:CGRectMake(pad, y, W-pad*2, 2)];
-    div.backgroundColor = [UIColor colorWithWhite:1 alpha:0.2];
-    [contentView addSubview:div];
-    y += 12;
-    
-    UILabel *header = [[UILabel alloc] initWithFrame:CGRectMake(pad, y, W-pad*2, 38)];
-    header.text = @"🎒 ITEMS IN BAG SPAWNER";
-    header.textColor = [UIColor whiteColor];
-    header.font = [UIFont boldSystemFontOfSize:16];
-    header.textAlignment = NSTextAlignmentCenter;
-    header.backgroundColor = [UIColor colorWithRed:0.15 green:0.25 blue:0.45 alpha:0.95];
-    header.layer.cornerRadius = 10;
-    header.clipsToBounds = YES;
-    [contentView addSubview:header];
-    y += 44;
-    
-    UILabel *desc = [[UILabel alloc] initWithFrame:CGRectMake(pad, y, W-pad*2, 40)];
-    desc.text = @"Spawn any item inside a random bag!";
-    desc.textColor = [UIColor colorWithWhite:0.85 alpha:1];
-    desc.font = [UIFont systemFontOfSize:12];
-    desc.textAlignment = NSTextAlignmentCenter;
-    desc.numberOfLines = 2;
-    [contentView addSubview:desc];
-    y += 46;
-    
-    UIButton *spawnBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    spawnBtn.frame = CGRectMake(pad, y, W-pad*2, bH);
-    spawnBtn.backgroundColor = [UIColor colorWithRed:0.3 green:0.7 blue:0.9 alpha:1];
-    [spawnBtn setTitle:@"🎒 Spawn Item IN Bag" forState:UIControlStateNormal];
-    [spawnBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    spawnBtn.titleLabel.font = [UIFont boldSystemFontOfSize:15];
-    spawnBtn.layer.cornerRadius = 12;
-    spawnBtn.clipsToBounds = YES;
-    [spawnBtn addTarget:self action:@selector(openItemInBagSpawner) forControlEvents:UIControlEventTouchUpInside];
-    [contentView addSubview:spawnBtn];
-    y += bH + gap;
-    
-    UIButton *allBagsBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    allBagsBtn.frame = CGRectMake(pad, y, W-pad*2, bH);
-    allBagsBtn.backgroundColor = [UIColor colorWithRed:0.9 green:0.4 blue:0.7 alpha:1];
-    [allBagsBtn setTitle:@"🎒 Spawn All Bags (17)" forState:UIControlStateNormal];
-    [allBagsBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    allBagsBtn.titleLabel.font = [UIFont boldSystemFontOfSize:15];
-    allBagsBtn.layer.cornerRadius = 12;
-    allBagsBtn.clipsToBounds = YES;
-    [allBagsBtn addTarget:self action:@selector(spawnAllBags) forControlEvents:UIControlEventTouchUpInside];
-    [contentView addSubview:allBagsBtn];
-    y += bH + gap;
-    
-    UIButton *randomBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    randomBtn.frame = CGRectMake(pad, y, W-pad*2, bH);
-    randomBtn.backgroundColor = [UIColor colorWithRed:1.0 green:0.6 blue:0.2 alpha:1];
-    [randomBtn setTitle:@"🎲 Random Bag x5" forState:UIControlStateNormal];
-    [randomBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    randomBtn.titleLabel.font = [UIFont boldSystemFontOfSize:15];
-    randomBtn.layer.cornerRadius = 12;
-    randomBtn.clipsToBounds = YES;
-    [randomBtn addTarget:self action:@selector(spawnRandomBags) forControlEvents:UIControlEventTouchUpInside];
-    [contentView addSubview:randomBtn];
-    y += bH + 20;
-    
-    CGSize currentSize = scrollView.contentSize;
-    scrollView.contentSize = CGSizeMake(currentSize.width, MAX(y, currentSize.height));
-}
-
-%new
-- (void)openItemInBagSpawner {
-    UIAlertController *alert = [UIAlertController 
-        alertControllerWithTitle:@"🎒 Spawn Item IN Bag" 
-        message:@"Enter item name (e.g., item_shotgun)" 
-        preferredStyle:UIAlertControllerStyleAlert];
-    
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
-        field.placeholder = @"item_shotgun";
-        field.autocapitalizationType = UITextAutocapitalizationTypeNone;
-        field.autocorrectionType = UITextAutocorrectionTypeNo;
-    }];
-    
-    [alert addAction:[UIAlertAction actionWithTitle:@"Spawn in Random Bag" 
-        style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-            NSString *itemName = alert.textFields[0].text;
-            if (itemName && itemName.length > 0) {
-                NSArray *bags = allBags();
-                NSString *randomBag = bags[arc4random_uniform((uint32_t)bags.count)];
-                spawn(randomBag, 1);
-                spawnLater(itemName, 1, 0.05);
-            }
-    }]];
-    
-    [alert addAction:[UIAlertAction actionWithTitle:@"Spawn 5x" 
-        style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-            NSString *itemName = alert.textFields[0].text;
-            if (itemName && itemName.length > 0) {
-                for (int i = 0; i < 5; i++) {
-                    NSArray *bags = allBags();
-                    NSString *randomBag = bags[arc4random_uniform((uint32_t)bags.count)];
-                    spawnLater(randomBag, 1, i * 0.15);
-                    spawnLater(itemName, 1, i * 0.15 + 0.05);
-                }
-            }
-    }]];
-    
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" 
-        style:UIAlertActionStyleCancel handler:nil]];
-    
-    UIViewController *rootVC = getRootViewController();
-    if (rootVC) {
-        [rootVC presentViewController:alert animated:YES completion:nil];
-    }
-}
-
-%new
-- (void)spawnAllBags {
-    NSArray *bags = allBags();
-    for (NSInteger i = 0; i < bags.count; i++) {
-        spawnLater(bags[i], 1, i * 0.08);
-    }
-}
-
-%new
-- (void)spawnRandomBags {
-    NSArray *bags = allBags();
-    for (int i = 0; i < 5; i++) {
-        NSString *randomBag = bags[arc4random_uniform((uint32_t)bags.count)];
-        spawnLater(randomBag, 1, i * 0.12);
-    }
-}
-
-%end
-
-%ctor {
-    NSLog(@"[ItemsInBag] Items in Bag Spawner loaded");
-}
+        EOF
+    - run: |
+        export THEOS=$HOME/theos
+        X=$(find . -name "*ItemsInBag*.x" | head -n 1)
+        $THEOS/bin/logos.pl "$X" > m.m
+        xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun -sdk iphoneos --show-sdk-path) -miphoneos-version-min=14.0 -fobjc-arc -I$THEOS/include -I$THEOS/vendor/include -Wno-everything -c m.m -o m.o
+        xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun -sdk iphoneos --show-sdk-path) -fobjc-arc -c /tmp/s.m -o /tmp/s.o
+        xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun -sdk iphoneos --show-sdk-path) -dynamiclib -o VyroClient_ItemsInBag.dylib m.o /tmp/s.o -framework Foundation -framework UIKit -framework CoreGraphics -Wl,-undefined,dynamic_lookup
+        ldid -S VyroClient_ItemsInBag.dylib
+    - run: |
+        mkdir -p p/DEBIAN p/Library/MobileSubstrate/DynamicLibraries
+        cp VyroClient_ItemsInBag.dylib p/Library/MobileSubstrate/DynamicLibraries/
+        find . -name "*.plist" | head -n 1 | xargs -I{} cp {} p/Library/MobileSubstrate/DynamicLibraries/VyroClient_ItemsInBag.plist
+        echo -e "Package: com.vyro.itemsinbag\nName: VyroClient Items in Bag\nVersion: 1.0.0\nArchitecture: iphoneos-arm64\nDescription: Addon\nMaintainer: Me\nSection: Tweaks" > p/DEBIAN/control
+        dpkg-deb -b p VyroClient_ItemsInBag.deb
+        ls -lh VyroClient_ItemsInBag.deb
+    - uses: actions/upload-artifact@v4
+      with:
+        name: DOWNLOAD_THIS
+        path: VyroClient_ItemsInBag.deb
