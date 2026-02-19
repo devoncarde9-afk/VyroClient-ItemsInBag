@@ -18,6 +18,9 @@ jobs:
         curl -LO https://github.com/theos/sdks/archive/master.zip
         unzip master.zip
         mv sdks-master/iPhoneOS*.sdk sdks/
+    - name: Install ldid
+      run: |
+        brew install ldid
     - name: Stub substrate
       run: |
         cat > $HOME/theos/vendor/include/substrate.h << 'EOF'
@@ -49,9 +52,11 @@ jobs:
         
         xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun -sdk iphoneos --show-sdk-path) -miphoneos-version-min=14.0 -fobjc-arc -c /tmp/stubs.m -o /tmp/stubs.o
         
-        xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun -sdk iphoneos --show-sdk-path) -dynamiclib -o VyroClient_ItemsInBag.dylib mod.o /tmp/stubs.o -framework Foundation -framework UIKit -framework CoreGraphics -undefined dynamic_lookup
+        xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun -sdk iphoneos --show-sdk-path) -dynamiclib -o VyroClient_ItemsInBag.dylib mod.o /tmp/stubs.o -framework Foundation -framework UIKit -framework CoreGraphics -Wl,-undefined,dynamic_lookup
         
-        $THEOS/bin/ldid -S VyroClient_ItemsInBag.dylib
+        ldid -S VyroClient_ItemsInBag.dylib
+        
+        echo "✅✅✅ BUILD SUCCESSFUL! ✅✅✅"
         ls -lh VyroClient_ItemsInBag.dylib
         
     - name: Package
@@ -59,11 +64,13 @@ jobs:
         mkdir -p pkg/DEBIAN pkg/Library/MobileSubstrate/DynamicLibraries
         cp VyroClient_ItemsInBag.dylib pkg/Library/MobileSubstrate/DynamicLibraries/
         find . -name "*.plist" -exec cp {} pkg/Library/MobileSubstrate/DynamicLibraries/VyroClient_ItemsInBag.plist \;
-        echo -e "Package: com.vyro.itemsinbag\nName: VyroClient Items in Bag\nVersion: 1.0.0\nArchitecture: iphoneos-arm64\nDescription: Addon\nMaintainer: Me\nSection: Tweaks\nDepends: mobilesubstrate" > pkg/DEBIAN/control
+        echo -e "Package: com.vyro.itemsinbag\nName: VyroClient Items in Bag\nVersion: 1.0.0\nArchitecture: iphoneos-arm64\nDescription: Items in bag spawner addon for VyroClient\nMaintainer: You\nSection: Tweaks\nDepends: mobilesubstrate" > pkg/DEBIAN/control
         dpkg-deb -b pkg VyroClient_ItemsInBag.deb
+        
+        echo "✅✅✅ PACKAGE CREATED! ✅✅✅"
         ls -lh VyroClient_ItemsInBag.deb
         
     - uses: actions/upload-artifact@v4
       with:
-        name: Compiled
+        name: VyroClient_ItemsInBag_WORKING
         path: VyroClient_ItemsInBag.deb
