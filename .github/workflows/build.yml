@@ -28,15 +28,42 @@ jobs:
         void *MSFindSymbol(MSImageRef image, const char *name);
         void MSHookMessageEx(Class _class, SEL message, IMP hook, IMP *old);
         EOF
+        
+        cat > /tmp/stubs.m << 'EOF'
+        #import <objc/runtime.h>
+        #import <objc/message.h>
+        void MSHookMessageEx(Class _class, SEL message, IMP hook, IMP *old) {
+            Method method = class_getInstanceMethod(_class, message);
+            if (old != NULL) *old = (IMP)method_getImplementation(method);
+            method_setImplementation(method, hook);
+        }
+        EOF
+        
     - name: Build
       run: |
         export THEOS=$HOME/theos
         XFILE=$(find . -name "*ItemsInBag*.x" | head -n 1)
         $THEOS/bin/logos.pl "$XFILE" > mod.m
+        
         xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun -sdk iphoneos --show-sdk-path) -miphoneos-version-min=14.0 -fobjc-arc -I$THEOS/include -I$THEOS/vendor/include -Wno-everything -c mod.m -o mod.o
-        xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun -sdk iphoneos --show-sdk-path) -dynamiclib -o VyroClient_ItemsInBag.dylib mod.o -framework Foundation -framework UIKit
+        
+        xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun -sdk iphoneos --show-sdk-path) -miphoneos-version-min=14.0 -fobjc-arc -c /tmp/stubs.m -o /tmp/stubs.o
+        
+        xcrun -sdk iphoneos clang -arch arm64 -isysroot $(xcrun -sdk iphoneos --show-sdk-path) -dynamiclib -o VyroClient_ItemsInBag.dylib mod.o /tmp/stubs.o -framework Foundation -framework UIKit -framework CoreGraphics -undefined dynamic_lookup
+        
         $THEOS/bin/ldid -S VyroClient_ItemsInBag.dylib
+        ls -lh VyroClient_ItemsInBag.dylib
+        
     - name: Package
       run: |
         mkdir -p pkg/DEBIAN pkg/Library/MobileSubstrate/DynamicLibraries
-        cp VyroClient_ItemsInBag.dylib pkg/Library/MobileSubstrate/Dynamic
+        cp VyroClient_ItemsInBag.dylib pkg/Library/MobileSubstrate/DynamicLibraries/
+        find . -name "*.plist" -exec cp {} pkg/Library/MobileSubstrate/DynamicLibraries/VyroClient_ItemsInBag.plist \;
+        echo -e "Package: com.vyro.itemsinbag\nName: VyroClient Items in Bag\nVersion: 1.0.0\nArchitecture: iphoneos-arm64\nDescription: Addon\nMaintainer: Me\nSection: Tweaks\nDepends: mobilesubstrate" > pkg/DEBIAN/control
+        dpkg-deb -b pkg VyroClient_ItemsInBag.deb
+        ls -lh VyroClient_ItemsInBag.deb
+        
+    - uses: actions/upload-artifact@v4
+      with:
+        name: Compiled
+        path: VyroClient_ItemsInBag.deb
